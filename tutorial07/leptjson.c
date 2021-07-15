@@ -348,9 +348,40 @@ int lept_parse(lept_value* v, const char* json) {
 
 static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
     /* ... */
+	size_t i = 0;
+	PUTC(c, '\"');
+	while (i < len) {
+		char ch = s[i++];
+		switch (ch) {
+			case '\"': PUTC(c, '\\'); PUTC(c, '\"'); break;
+			case '\\': PUTC(c, '\\'); PUTC(c, '\\'); break;
+			case '\b': PUTC(c, '\\'); PUTC(c, 'b'); break;
+			case '\f': PUTC(c, '\\'); PUTC(c, 'f'); break;
+			case '\n': PUTC(c, '\\'); PUTC(c, 'n'); break;
+			case '\r': PUTC(c, '\\'); PUTC(c, 'r'); break;
+			case '\t': PUTC(c, '\\'); PUTC(c, 't'); break;
+			default:
+				if (ch < 0x20) {
+					char tmp;
+					PUTC(c, '\\');
+					PUTC(c, 'u');
+					PUTC(c, '0');
+					PUTC(c, '0');
+					tmp = (ch & 0xF0) >> 4;
+					if (tmp >= 0 && tmp <= 9) PUTC(c, tmp + '0');
+					else PUTC(c, tmp - 10 + 'A');
+					tmp = ch & 0x0F;
+					if (tmp >= 0 && tmp <= 9) PUTC(c, tmp + '0');
+					else PUTC(c, tmp - 10 + 'A');
+				}
+				else PUTC(c, ch);
+		}
+	}
+	PUTC(c, '\"');
 }
 
 static void lept_stringify_value(lept_context* c, const lept_value* v) {
+	size_t i;
     switch (v->type) {
         case LEPT_NULL:   PUTS(c, "null",  4); break;
         case LEPT_FALSE:  PUTS(c, "false", 5); break;
@@ -359,9 +390,27 @@ static void lept_stringify_value(lept_context* c, const lept_value* v) {
         case LEPT_STRING: lept_stringify_string(c, v->u.s.s, v->u.s.len); break;
         case LEPT_ARRAY:
             /* ... */
+			PUTC(c, '[');
+			for (i = 0; i < v->u.a.size; i++) {
+				lept_stringify_value(c, &v->u.a.e[i]);
+				if (i != v->u.a.size - 1)
+					PUTC(c, ',');
+			}
+			PUTC(c, ']');
             break;
         case LEPT_OBJECT:
             /* ... */
+			PUTC(c, '{');
+			for (i = 0; i < v->u.o.size; i++) {
+				PUTC(c, '\"');
+				PUTS(c, v->u.o.m[i].k, v->u.o.m[i].klen);
+				PUTC(c, '\"');
+				PUTC(c, ':');
+				lept_stringify_value(c, &v->u.o.m[i].v);
+				if (i != v->u.o.size - 1)
+					PUTC(c, ',');
+			}
+			PUTC(c, '}');
             break;
         default: assert(0 && "invalid type");
     }
